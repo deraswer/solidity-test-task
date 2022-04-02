@@ -4,7 +4,7 @@
 
 ### Create .env file with this structure:
 ```
-INFURA_URL="https://rinkeby.infura.io/v3/{projectID}}"
+INFURA_URL="https://rinkeby.infura.io/v3/{projectID}"
 CONTRACT_OWNER_PK="private key here"
 ```
 
