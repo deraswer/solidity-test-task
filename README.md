@@ -18,6 +18,11 @@ npx hardhat compile
 npx hardhat run scripts/deploy.js --network rinkeby
 ```
 
+### Check tests coverage:
+```shell
+npx hardhat coverage
+```
+
 ### Note that you should have testnet ETH to push transactions, here you can get some:
 ```
 https://rinkebyfaucet.com/
