@@ -4,108 +4,139 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 
 contract VotingCon {
-    address public admin;
-    uint candidatesCount;
-    uint electionsCount;
-    uint votersCount;
 
-    constructor() {
-        admin = msg.sender;
-        candidatesCount = 0;
-        electionsCount = 0;
-        votersCount = 0;
+    struct User {
+        bool voted;
+        address votedFor;
+        uint256 votes;
     }
 
-    modifier onlyAdmin() {
-        require(msg.sender == admin);
+    struct Voting {
+        mapping(address => User) users;
+        bool isEnded;
+        bool isDraw;
+        address payable winner;
+        
+        uint256 vBalance;
+        uint256 endTime;
+        uint256 winnerVotesCount;
+        uint256 votersCount;
+    }
+    
+    address payable public owner;
+
+    mapping(uint256 => Voting) public votings;
+
+    uint256 votingsCount;
+
+    uint256 commission;
+
+    event votingCreation(uint256 _vid);
+
+    constructor() {
+        owner = payable(msg.sender);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "You're not the owner!");
         _;
     }
 
-    struct Election {
-        uint eid;
-        uint creationTime;
-        uint totalVoted;
-        address[] currCandidates;
-        address[] currVoters;
-        uint[] currVotes;
+    function addVoting() public onlyOwner returns (uint256 _vid) {
+        _vid = votingsCount;
+        votingsCount++;
+
+        Voting storage voting = votings[_vid];
+        voting.endTime = block.timestamp + 3 days;
+        
+        emit votingCreation(_vid);
     }
 
-    Election[] elections;
+    function vote(uint256 _vid, address payable candidateAddr) public payable {
+        require(msg.value == 0.01 ether, "You must send 0.01 ether to be eligible for voting.");
 
-    function createElection(address[] calldata _candidates) public onlyAdmin {
+        Voting storage voting = votings[_vid];
 
-        elections.push(Election({
-                eid: electionsCount,
-                creationTime: block.timestamp,
-                totalVoted: 0,
-                currCandidates: _candidates,
-                currVoters: new address[](0),
-                currVotes: new uint[](_candidates.length)
-            }));
+        require(!voting.isEnded, "Voting is ended");
 
-        electionsCount += 1;
-    }
+        User storage voter = voting.users[msg.sender];
+        User storage candidate = voting.users[candidateAddr];
 
-    function endElection(uint _eid) public {
-        if (block.timestamp - elections[_eid].creationTime >= 3 days) {
-            uint maxi = 0;
-            for (uint i = 0; i < elections[_eid].currVotes.length; i++) {
-                if (elections[_eid].currVotes[maxi] < elections[_eid].currVotes[i]) maxi = i;
-            }
-            
-            address payable winnerAddr =  payable(elections[_eid].currCandidates[maxi]);
+        require(!voter.voted, "You can`t vote more than once!");
 
-            uint amount = address(this).balance * 90 / 100;
+        voter.votedFor = candidateAddr;
+        voter.voted = true;
+        candidate.votes++;
+        voting.vBalance += 0.009 ether;
+        commission += 0.001 ether;
+        voting.votersCount++;
 
-            winnerAddr.transfer(amount);
-
-            delete elections[_eid];
+        if (voting.winnerVotesCount == candidate.votes) {
+            voting.isDraw = true;
         } else {
-           console.log("This election can`t be deleted before the time is up.");
+            voting.isDraw = false;
+        }
+
+        if (voting.winnerVotesCount < candidate.votes) {
+            voting.winnerVotesCount = candidate.votes;
+            voting.winner = candidateAddr;
         }
     }
 
-    function vote(uint _eid, address _candidateAddr) external payable {
-        // 10000000000000000 wei = 0.01 ether
-        if (msg.value == 10000000000000000 wei) {
+    function finish(uint256 _vid) public {
+        Voting storage voting = votings[_vid];
+        
+        require(block.timestamp >= voting.endTime, "This voting can`t be ended before the time is up.");
+        require(!voting.isEnded, "Voting is ended"); 
+        require(!voting.isDraw, "The voting result can`t be a draw");    
 
-            uint cid;
-            for (uint i = 0; i < elections[_eid].currCandidates.length; i++) {
-                if (elections[_eid].currCandidates[i] == _candidateAddr) {
-                    cid = i;
-                }
-            }
-
-            for (uint i = 0; i < elections[_eid].currVoters.length; i++) {
-                if (elections[_eid].currVoters[i] == msg.sender) {
-                    revert();
-                }
-            }
-
-            elections[_eid].currVotes[cid] += 1;
-            elections[_eid].currVoters.push(msg.sender);
-            elections[_eid].totalVoted += 1;
-            votersCount += 1;
-
-        } else {
-            console.log("You must send 0.01 ether to be eligible for voting.");
-            revert();
-        }
+        voting.isEnded = true;
+        voting.winner.transfer(voting.vBalance);
+        
+        voting.vBalance = 0;
     }
 
-    function withdrawTo(address payable _to) public onlyAdmin {
-        _to.transfer(address(this).balance);
+    function withdraw() public onlyOwner payable {
+        owner.transfer(commission);
     }
 
-    function getElections() public view returns (Election[] memory) {
-        return elections;
+    function getVotingsCount() public view returns (uint256) {
+        return votingsCount;
     }
 
-    function getTotalVoters() public view returns (uint) {
-        return votersCount;
+    function getVotingInfo(uint256 _vid) public view returns (
+        bool, bool, address, 
+        uint, uint, uint, uint
+    ) {
+        return (
+            votings[_vid].isEnded,
+            votings[_vid].isDraw,
+            votings[_vid].winner,
+        
+            votings[_vid].vBalance,
+            votings[_vid].endTime,
+            votings[_vid].winnerVotesCount,
+            votings[_vid].votersCount
+        );
     }
 
-    function getContractBalance() external view returns (uint) {
+    function getVotingEnd(uint256 _vid) public view returns (bool) {
+        return votings[_vid].isEnded;
+    }
+
+    function getVotingEndtime(uint256 _vid) public view returns (uint) {
+        return votings[_vid].endTime;
+    }
+
+    function getVotingWinner(uint256 _vid) public view returns (address) {
+        return votings[_vid].winner;
+    }
+
+    function getVotersCount(uint256 _vid) public view returns (uint) {
+        return votings[_vid].votersCount;
+    }
+
+    function getConBalance() external view returns (uint) {
         return address(this).balance;
     }
 }
