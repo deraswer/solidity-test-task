@@ -32,6 +32,7 @@ contract VotingCon {
     uint256 commission;
 
     event votingCreation(uint256 _vid);
+    event candidateAddition(address candidateAddr);
 
     constructor() {
         owner = payable(msg.sender);
@@ -52,12 +53,21 @@ contract VotingCon {
         emit votingCreation(_vid);
     }
 
+    function addCandidate(uint256 _vid, address payable candidateAddr) public onlyOwner {
+        Voting storage voting = votings[_vid];
+
+        voting.users[candidateAddr] = User(false, 0x0000000000000000000000000000000000000000, 0);
+
+        emit candidateAddition(candidateAddr);
+    }
+
     function vote(uint256 _vid, address payable candidateAddr) public payable {
         require(msg.value == 0.01 ether, "You must send 0.01 ether to be eligible for voting.");
 
         Voting storage voting = votings[_vid];
 
         require(!voting.isEnded, "Voting is ended");
+        require(voting.endTime > block.timestamp, "Voting is ended");
 
         User storage voter = voting.users[msg.sender];
         User storage candidate = voting.users[candidateAddr];

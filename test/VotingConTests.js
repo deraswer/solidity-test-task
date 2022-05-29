@@ -22,7 +22,6 @@ describe("VotingCon", function () {
 
         const votingCreatedEvent = raw.events.find(event => event.event === 'votingCreation');
         [vid] = votingCreatedEvent.args;
-
     });
 
     describe("Deploy", function () {
@@ -70,6 +69,16 @@ describe("VotingCon", function () {
             await expect(votingCon.connect(candidate1).vote(vid, candidate2.address)).to.be.revertedWith("You must send 0.01 ether to be eligible for voting.");
         })
 
+        it("Checks addition of candidate", async function () {
+            const addCandidateTransaction = await votingCon.addCandidate(0, users[5].address);
+            const actRaw = await addCandidateTransaction.wait();
+    
+            const candidateAdditionEvent = actRaw.events.find(event => event.event === 'candidateAddition');
+            const [candidateAddr] = candidateAdditionEvent.args;
+    
+            await expect(candidateAddr).to.equal(users[5].address);
+        });
+
         it("Checks state after voting", async function () {
 
             await votingCon.connect(candidate1).vote(vid, candidate2.address, { value: ethers.utils.parseEther("0.01") });
@@ -103,15 +112,12 @@ describe("VotingCon", function () {
             await expect(votingCon.finish(vid)).to.be.revertedWith('This voting can`t be ended before the time is up.');
         });
 
-        it("Checks end of voting after end time", async function () {
+        it("Checks voting after end time", async function () {
             await votingCon.connect(candidate1).vote(vid, candidate2.address, { value: ethers.utils.parseEther("0.01") });
-            await votingCon.connect(candidate2).vote(vid, candidate1.address, { value: ethers.utils.parseEther("0.01") });
 
             await network.provider.send("evm_increaseTime", [60 * 60 * 24 * 3]);
 
-            await expect(votingCon.finish(vid)).to.be.revertedWith("The voting result can`t be a draw");
-
-            await votingCon.connect(users[5]).vote(vid, candidate1.address, { value: ethers.utils.parseEther("0.01") });
+            await expect(votingCon.connect(users[5]).vote(vid, candidate1.address, { value: ethers.utils.parseEther("0.01") })).to.be.revertedWith("Voting is ended");
 
             await expect(await votingCon.getVotingEnd(vid)).to.equal(false);
 
@@ -121,7 +127,15 @@ describe("VotingCon", function () {
 
             await expect(await candidate1.getBalance() > winnerBalance);
             await expect(await votingCon.getVotingEnd(vid)).to.equal(true);
+        });
 
+        it("Checks voting result is draw", async function () {
+            await votingCon.connect(candidate1).vote(vid, candidate2.address, { value: ethers.utils.parseEther("0.01") });
+            await votingCon.connect(candidate2).vote(vid, candidate1.address, { value: ethers.utils.parseEther("0.01") });
+
+            await network.provider.send("evm_increaseTime", [60 * 60 * 24 * 3]);
+
+            await expect(votingCon.finish(vid)).to.be.revertedWith("The voting result can`t be a draw");
         });
 
         it("Checks withdrawals not by owner", async function () {
@@ -146,7 +160,6 @@ describe("VotingCon", function () {
             await votingCon.withdraw();
 
             await expect(await owner.getBalance() > balance);
-
         });
 
         it("Checks impossibility to vote after", async function () {
@@ -155,7 +168,6 @@ describe("VotingCon", function () {
             await votingCon.finish(vid);
             await expect(votingCon.connect(candidate2).vote(vid, candidate2.address, { value: ethers.utils.parseEther("0.01") })).to.be.revertedWith("Voting is ended");
             await expect(await votingCon.getVotingEnd(vid)).to.equal(true);
-
         });
 
         it("Checks double ending", async function () {
